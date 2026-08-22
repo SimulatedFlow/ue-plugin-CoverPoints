@@ -2,28 +2,35 @@
 
 **Cover point generation, constant-time scoring and exclusive reservation for Unreal Engine 5.8.**
 
+Version 1.0.0 · Runtime-only C++ plugin · Blueprint and C++ API
+
 ---
 
 ## Table of contents
 
 1. [What this plugin is, and what it is not](#1-what-this-plugin-is-and-what-it-is-not)
 2. [Installation](#2-installation)
-3. [Concepts](#3-concepts)
+3. [Supported engine and platforms](#3-supported-engine-and-platforms)
 4. [Quick start](#4-quick-start)
-5. [`ACoverVolume` — where cover is generated](#5-acovervolume--where-cover-is-generated)
-6. [Generation: how a point is measured](#6-generation-how-a-point-is-measured)
-7. [Scoring: how a query picks one](#7-scoring-how-a-query-picks-one)
-8. [Reservation: one point, one agent](#8-reservation-one-point-one-agent)
-9. [Verification: catching a point that lies](#9-verification-catching-a-point-that-lies)
-10. [Blueprint API](#10-blueprint-api)
-11. [C++ API](#11-c-api)
-12. [Project settings](#12-project-settings)
-13. [The statistics box](#13-the-statistics-box)
-14. [Console commands](#14-console-commands)
-15. [Performance](#15-performance)
-16. [Recipes](#16-recipes)
-17. [Troubleshooting](#17-troubleshooting)
-18. [Scope and limits](#18-scope-and-limits)
+5. [The demo map](#5-the-demo-map)
+6. [Concepts](#6-concepts)
+7. [Class and type overview](#7-class-and-type-overview)
+8. [`ACoverVolume` — where cover is generated](#8-acovervolume--where-cover-is-generated)
+9. [Generation: how a point is measured](#9-generation-how-a-point-is-measured)
+10. [Scoring: how a query picks one](#10-scoring-how-a-query-picks-one)
+11. [Reservation: one point, one agent](#11-reservation-one-point-one-agent)
+12. [Verification: catching a point that lies](#12-verification-catching-a-point-that-lies)
+13. [Blueprint API](#13-blueprint-api)
+14. [C++ API](#14-c-api)
+15. [Type reference](#15-type-reference)
+16. [Project settings](#16-project-settings)
+17. [The statistics box](#17-the-statistics-box)
+18. [Console commands](#18-console-commands)
+19. [Performance](#19-performance)
+20. [Recipes](#20-recipes)
+21. [Troubleshooting](#21-troubleshooting)
+22. [Scope and limits](#22-scope-and-limits)
+23. [Support](#23-support)
 
 ---
 
@@ -46,17 +53,131 @@ be answering queries the same afternoon.
 
 ## 2. Installation
 
-1. Copy the `CoverPoints` folder into your project's `Plugins` directory.
-2. Open the project. If asked to rebuild, say yes.
+### From Fab
+
+1. Install CoverPoints from the Epic Games Launcher into engine version 5.8, then enable it for your
+   project under *Edit → Plugins → AI → CoverPoints*.
+2. Restart the editor when prompted.
+
+### From a plugin folder (source or a downloaded package)
+
+1. Copy the `CoverPoints` folder into your project's `Plugins` directory, so that
+   `<YourProject>/Plugins/CoverPoints/CoverPoints.uplugin` exists.
+2. Open the project. If asked to rebuild missing modules, say yes.
 3. *Edit → Plugins → AI → CoverPoints* — make sure it is enabled, and restart if prompted.
 
+A C++ project rebuilds the module automatically. A Blueprint-only project needs either the precompiled
+binaries that ship with the Fab build, or Visual Studio 2022 with the *Game development with C++*
+workload installed once, so the engine can compile the module on first open.
+
+### After installation
+
 The plugin's module loads at `PreDefault`, so the subsystem, the volume class and the `Cover.*` console
-commands all exist before the first game world is created. A volume in a map that is loaded on startup can
-therefore begin generating on the very first frame.
+commands all exist before the first game world is created. A volume in a map that is loaded on startup
+can therefore begin generating on the very first frame.
+
+There is nothing else to configure. Defaults live under *Project Settings → Plugins → CoverPoints* and
+every one of them is usable as it stands.
 
 ---
 
-## 3. Concepts
+## 3. Supported engine and platforms
+
+| | |
+|---|---|
+| **Engine version** | Unreal Engine **5.8** |
+| **Platforms enabled in the descriptor** | Win64, Mac, Linux |
+| **Built and verified for this release** | **Win64** (Development Editor and Shipping, via `RunUAT BuildPlugin`) |
+| **Module type** | one `Runtime` module, `LoadingPhase: PreDefault` |
+| **Editor module** | none |
+| **Public dependencies** | `Core`, `CoreUObject`, `Engine`, `DeveloperSettings`, `NavigationSystem` |
+| **Private dependencies** | `RenderCore` |
+| **Third-party code** | none |
+| **Other plugin dependencies** | none |
+| **Network replication** | no (see [Scope and limits](#22-scope-and-limits)) |
+| **Blueprint API** | yes, complete — the plugin is fully usable without C++ |
+| **Content in the product** | demo map and demo Blueprints only; the runtime module ships no assets |
+
+The code is platform-neutral: world sweeps, line traces, `FPlatformTime`, the navigation system and
+`UCanvas`. There is no platform-specific code, no intrinsics and no third-party binary, so Mac and Linux
+are enabled in the descriptor. They were not built for this release, and the honest statement is that
+they are expected to compile rather than measured to.
+
+`NavigationSystem` is a hard dependency of the module but a soft dependency of the feature: a world
+without a navigation system falls back to the downward floor trace instead of failing to generate.
+
+---
+
+## 4. Quick start
+
+1. Place a **Cover Volume** in the level and scale its box over the area you want cover in. Leave
+   `GridSpacing` at 200 to start with.
+2. Press Play. The volume builds on `BeginPlay`, in slices, under the millisecond budget.
+3. In an AI Blueprint:
+
+```
+Event Wants Cover
+  └─ Find Best Cover
+       World Context   : self
+       Agent Actor     : self
+       Threat Location : (the player's location)
+       Search Radius   : 2000
+       Claim Cover     : true
+     ├─ Branch on Result.bFound
+     │    └─ AI Move To → Result.Point.Location
+     └─ (else) fall back to whatever you already do when there is no cover
+```
+
+4. When the agent leaves cover, dies, or picks a new target: **Release Cover For Actor**.
+
+That is the whole integration. Everything below is detail.
+
+To *see* what happened, set the map's HUD class to **Cover Points HUD** — or, if the project already has
+a HUD class of its own, turn on *Project Settings → Plugins → CoverPoints → Auto Draw Stats On Any HUD*.
+Then run `Cover.Show 1 peek` and `Cover.Threat player` in the console.
+
+---
+
+## 5. The demo map
+
+The plugin ships one map that exercises every part of it:
+**`/CoverPoints/CoverPoints/Maps/L_CoverPointsDemo`**.
+
+Open it and press Play. A control panel sits top-right, the plugin's own statistics box top-left:
+
+| Button | What it calls |
+|---|---|
+| **1  Build Cover Field** | `RebuildVolume` on the arena's Cover Volume, then `SetShowCoverPoints` / `SetShowPeekSides` |
+| **2  Deploy 8 Agents** | `FindBestCover` once per agent with *Claim Cover* on — eight agents, eight different points |
+| **3  Move Threat** | Moves the threat marker to the next of four positions and re-queries; the point colours flip |
+| **4  Release All Claims** | `ReleaseCoverForActor` per agent plus `ReleaseAllCover` |
+| **5  Toggle Point Overlay** | `SetShowCoverPoints` / `SetShowPeekSides` |
+
+Green points shield against the current threat, red ones face it; large dots are high cover, small dots
+low, the short line is the measured cover normal and a yellow ring marks a claimed point.
+
+The volume in that map has **`bBuildOnBeginPlay` off** on purpose: its `RecastNavMesh` is set to
+`Dynamic`, so the navmesh that `bProjectToNavMesh` needs is still generating on the first frame. Pressing
+*1* a second later is the whole reason the button exists. A map with a baked navmesh can leave
+`bBuildOnBeginPlay` on.
+
+Assets, all under `/CoverPoints/CoverPoints/`:
+
+- `Maps/L_CoverPointsDemo` — the arena, one `ACoverVolume`, a `DemoCamera`, a NavMesh Bounds Volume
+- `Blueprints/BP_CoverDemoDirector` — the five actions above
+- `Blueprints/BP_CoverAgent` — `RequestCover` / `ReleaseAndReset`, and a tick that walks to the point
+- `Blueprints/BP_CoverThreat` — the thing every score is measured against
+- `Blueprints/BP_CoverWall`, `BP_CoverPillar`, `BP_CoverCrate` — the geometry the sweeps find
+- `Blueprints/BP_CoverPointsDemoGameMode`, `BP_CoverPointsDemoHUD` — the HUD class is an `ACoverPointsHUD` child
+- `UI/WBP_CoverPointsPanel` — the control panel (demo only; the plugin itself contains no UMG)
+- `Materials/M_CoverDemo` + six instances
+
+The demo content references nothing outside its own folder, so it can be deleted wholesale from a
+shipping project without leaving a single missing reference behind.
+
+---
+
+## 6. Concepts
 
 ### Cover point
 
@@ -96,32 +217,51 @@ Two different things share the word:
 
 ---
 
-## 4. Quick start
+## 7. Class and type overview
 
-1. Place a **Cover Volume** and scale its box over the area you want cover in.
-2. Press Play. It builds on `BeginPlay`, in slices, under the millisecond budget.
-3. In an AI Blueprint:
+Five classes, five structs, two enums. That is the entire public surface.
+
+### Classes
+
+| Class | Base | Where you meet it | What it is |
+|---|---|---|---|
+| `ACoverVolume` | `AActor` | Placed in the level | The area cover is generated in, and the body measurements it is generated for: grid spacing, agent radius, cover distance, crouch and stand height. A `UBoxComponent`, not a brush, so it can be spawned and scaled at runtime. |
+| `UCoverPointsSubsystem` | `UTickableWorldSubsystem` | `Get(WorldContext)`, or via the statics | The plugin itself: sliced generation, the spatial index, scoring, reservation, verification and the counters. Game and PIE worlds only. |
+| `UCoverPointsStatics` | `UBlueprintFunctionLibrary` | Blueprint nodes, category *CoverPoints* | The whole plugin from Blueprint, with no subsystem reference in sight. Safe in worlds that have no subsystem at all. |
+| `UCoverPointsSettings` | `UDeveloperSettings` | *Project Settings → Plugins → CoverPoints* | What the project decides once: trace channel, budgets, cell size, claim lifetime, verification, presentation. |
+| `ACoverPointsHUD` | `AHUD` | Set as a map's HUD class | The Canvas statistics box. Optional — `bAutoDrawStatsOnAnyHUD` draws the same box from whatever HUD the project already has. |
+
+### Structs and enums
+
+| Type | What it holds |
+|---|---|
+| `FCoverPoint` | One piece of cover: location, cover normal, high/low, wall distance, the three peek flags, score, claim state, handle. |
+| `FCoverPointHandle` | Index + build generation. A stable, checkable reference to a point across frames. |
+| `FCoverQueryParams` | The six scoring weights, `PreferredThreatDistance`, `MinShielding`, and three filters. |
+| `FCoverQueryResult` | `bFound`, the handle, a copy of the point, score, distance, shielding, peek side, whether the claim went through, and how many candidates were examined. |
+| `FCoverPointsStats` | Everything the counters box draws, as a struct a test can assert on. |
+| `ECoverHeight` | `Low` / `High`. |
+| `ECoverPeekSide` | `None` / `Left` / `Right` / `Over`. |
+
+### How they fit together
 
 ```
-Event Wants Cover
-  └─ Find Best Cover
-       World Context : self
-       Agent Actor   : self
-       Threat Location : (the player's location)
-       Search Radius : 2000
-       Claim Cover   : true
-     ├─ Branch on Result.bFound
-     │    └─ AI Move To → Result.Point.Location
-     └─ (else) fall back to whatever you already do when there is no cover
+   ACoverVolume  (one per area, N per level)
+        │  registers on BeginPlay
+        ▼
+   UCoverPointsSubsystem  (one per world)
+        │  generation in slices ──► TArray<FCoverPoint> ──► spatial hash
+        │  queries              ──► FCoverQueryResult
+        │  claims               ──► one point, one agent
+        │
+        ├──► UCoverPointsStatics   (Blueprint front door)
+        ├──► ACoverPointsHUD       (the counters box)
+        └──► UCoverPointsSettings  (defaults, read once on Initialize)
 ```
-
-4. When the agent leaves cover, dies, or picks a new target: **Release Cover For Actor**.
-
-That is the whole integration. Everything below is detail.
 
 ---
 
-## 5. `ACoverVolume` — where cover is generated
+## 8. `ACoverVolume` — where cover is generated
 
 A box component, not an `AVolume` with a brush. A brush is an editor-authored asset: it cannot be spawned
 at runtime with a sensible size, it cannot be scaled from a Blueprint, and a procedurally generated level
@@ -142,6 +282,9 @@ and a trench line want different numbers, and they are different volumes.
 | `bVolumeEnabled` | true | Off keeps the volume registered and its points gone — for a region sealed off until an act of the game opens it. |
 | `IgnoredActors` | — | Things that are solid but are not cover: a clip-brush cage, a physics prop that will be gone, the agents themselves. |
 
+Methods: `Rebuild()` regenerates just this volume; `GetSampleCount()` reports how many grid samples it
+will process without processing any of them, which is what a loading bar wants before it starts.
+
 The grid is laid out in the box's **local** space and centred, so a rotated volume laid along a ramp
 samples the ramp, and a volume nudged 30 cm sideways does not resample the whole room in a different
 place.
@@ -152,7 +295,7 @@ onto the navmesh it had just removed.
 
 ---
 
-## 6. Generation: how a point is measured
+## 9. Generation: how a point is measured
 
 Per grid sample, in order. Any step that fails ends the sample.
 
@@ -210,19 +353,19 @@ what `IsCoverValid` is for.
 
 ---
 
-## 7. Scoring: how a query picks one
+## 10. Scoring: how a query picks one
 
 No traces. The cells of the spatial hash overlapping the search sphere are gathered and every point in
 them is scored on six terms, each normalised to 0..1:
 
-| Term | What it measures |
-|---|---|
-| **Shielding** | `-dot(CoverNormal, dirToThreat)`, remapped to 0..1. The term that means "cover". |
-| **Agent distance** | 1 at the agent's feet, 0 at the edge of the search radius. |
-| **Threat distance** | 1 at `PreferredThreatDistance`, falling off in **both** directions. |
-| **High cover** | 1 for `High`, 0 for `Low`. |
-| **Peek** | 1 when the point can lean towards the threat, 0 otherwise. |
-| **Wall proximity** | 1 pressed against the wall, 0 at the volume's full cover distance. |
+| Term | Weight | What it measures |
+|---|---|---|
+| **Shielding** | `ShieldingWeight` (3.0) | `-dot(CoverNormal, dirToThreat)`, remapped to 0..1. The term that means "cover". |
+| **Agent distance** | `AgentDistanceWeight` (1.0) | 1 at the agent's feet, 0 at the edge of the search radius. |
+| **Threat distance** | `ThreatDistanceWeight` (1.0) | 1 at `PreferredThreatDistance`, falling off in **both** directions. |
+| **High cover** | `HighCoverWeight` (0.75) | 1 for `High`, 0 for `Low`. |
+| **Peek** | `PeekWeight` (1.0) | 1 when the point can lean towards the threat, 0 otherwise. |
+| **Wall proximity** | `WallProximityWeight` (0.5) | 1 pressed against the wall, 0 at the volume's full cover distance. |
 
 The weighted sum is divided by the sum of the weights, so a score is a number between 0 and 1 that means
 the same thing in two different levels — instead of a number whose scale is an accident of how the
@@ -243,7 +386,7 @@ shotgun layout or a rifle layout without a single point being regenerated.
 
 ---
 
-## 8. Reservation: one point, one agent
+## 11. Reservation: one point, one agent
 
 `ClaimCover` takes a point or fails. There is no queue, no priority, no sharing.
 
@@ -268,7 +411,7 @@ This is the reason the plugin exists as a service rather than as a helper functi
 
 ---
 
-## 9. Verification: catching a point that lies
+## 12. Verification: catching a point that lies
 
 Generation happens once. Levels do not. A door opens, a wall is blown out, a container is driven away —
 and a point that was measured as safe is now a lie.
@@ -288,7 +431,7 @@ through every point every frame looking for work it is never going to find.
 
 ---
 
-## 10. Blueprint API
+## 13. Blueprint API
 
 All of it is on **UCoverPointsStatics**, category *CoverPoints*. Every call is world-context-aware and
 safe in a world with no CoverPoints subsystem at all: queries answer "no cover", setters do nothing,
@@ -325,14 +468,22 @@ ever placed — it takes the fallback branch the designer already wrote.
 | **Get Cover Facing Rotation** | Out into the open, **not** into the wall. |
 | **Peek Side To String** | For a label on a screen. |
 | **Set Show Cover Points** / **Set Show Peek Sides** | Debug drawing. |
+| **Is Showing Cover Points** / **Is Showing Peek Sides** | State of the debug drawing, for a toggle button. |
+
+`ACoverVolume` adds two Blueprint-callable nodes of its own: **Rebuild** and **Get Sample Count**.
+`ACoverPointsHUD` adds **Toggle Stats**.
 
 ### Events
 
 On the subsystem: `OnBuildCompleted(int32 TotalPoints)` and `OnPointInvalidated(FCoverPointHandle)`.
+Bind them from Blueprint by getting the *Cover Points Subsystem* from the world and assigning to the
+delegate — see the C++ equivalent below.
 
 ---
 
-## 11. C++ API
+## 14. C++ API
+
+### Getting at the subsystem
 
 ```cpp
 #include "CoverPointsSubsystem.h"
@@ -344,7 +495,14 @@ if (!Cover)
 {
     return;   // no cover system in this world, and that is a legitimate world
 }
+```
 
+`Get` takes any world context object and returns null in editor worlds, in worlds that are shutting
+down, and in commandlets. Every call site should handle that; none of them should assert on it.
+
+### Asking for cover
+
+```cpp
 FCoverQueryParams Params;
 Params.PreferredThreatDistance = 900.0f;   // this agent carries a shotgun
 Params.bRequireHighCover       = true;
@@ -362,6 +520,7 @@ if (Result.bFound)
     MoveTo(Result.Point.Location);
     FaceTowards(UCoverPointsStatics::GetCoverFacingRotation(Result.Point, Target->GetActorLocation()));
     // Result.PeekSide tells the animation which way to lean.
+    // Result.Handle is what you keep; Result.Point is a snapshot.
 }
 ```
 
@@ -374,12 +533,178 @@ Cover->ReleaseCoverForActor(MyPawn);
 `FindBestCover` is the only non-`UFUNCTION` entry point on the subsystem, because its argument list is
 longer than a Blueprint node should be. Everything else is reflected.
 
+### Holding a point across frames
+
+Keep the **handle**, not the point, and re-check it before you rely on it:
+
+```cpp
+// In the AI controller:
+FCoverPointHandle MyCover;
+
+// When cover is chosen:
+MyCover = Result.Handle;
+
+// Every decision tick, before walking to it or shooting from it:
+if (!UCoverPointsStatics::IsCoverValid(this, MyCover))
+{
+    // The level was rebuilt, or the verifier caught this point failing to block.
+    MyCover = FCoverPointHandle();
+    RequestNewCover();
+    return;
+}
+
+FCoverPoint Point;
+if (Cover->GetPoint(MyCover, Point))
+{
+    const float Shielding = UCoverPointsSubsystem::GetShielding(Point, Target->GetActorLocation());
+    if (Shielding < 0.2f)
+    {
+        // The threat has flanked this point. It is still valid cover - just not against *this* threat.
+        RequestNewCover();
+    }
+}
+```
+
+### Listening to the subsystem
+
+```cpp
+void AMyAIDirector::BeginPlay()
+{
+    Super::BeginPlay();
+
+    if (UCoverPointsSubsystem* Cover = UCoverPointsSubsystem::Get(this))
+    {
+        Cover->OnBuildCompleted.AddDynamic(this, &AMyAIDirector::HandleCoverReady);
+        Cover->OnPointInvalidated.AddDynamic(this, &AMyAIDirector::HandleCoverLost);
+    }
+}
+
+void AMyAIDirector::HandleCoverReady(int32 TotalPoints)
+{
+    UE_LOG(LogTemp, Display, TEXT("Cover field ready: %d points."), TotalPoints);
+    StartEncounter();
+}
+
+void AMyAIDirector::HandleCoverLost(FCoverPointHandle Handle)
+{
+    // Whoever was holding it has already had the claim released for them.
+    // This is where a squad would re-task the agent that was walking to it.
+}
+```
+
+Both delegates are `DYNAMIC_MULTICAST`, so the bound function must be a `UFUNCTION()`.
+
+### Spawning a volume at runtime
+
+A procedurally generated level lays down its own cover volumes. This is why the class uses a box
+component rather than a brush:
+
+```cpp
+ACoverVolume* Volume = GetWorld()->SpawnActor<ACoverVolume>(RoomCentre, FRotator::ZeroRotator);
+Volume->Bounds->SetBoxExtent(FVector(RoomHalfSizeX, RoomHalfSizeY, 300.0f));
+Volume->GridSpacing      = 150.0f;
+Volume->CoverDistance    = 160.0f;
+Volume->bBuildOnBeginPlay = false;      // the room is still being assembled
+
+// ... once the geometry has stopped moving:
+Volume->Rebuild();
+```
+
+### A build behind a loading screen
+
+```cpp
+UCoverPointsStatics::RebuildVolume(this, nullptr);      // every enabled volume
+UCoverPointsStatics::FinishBuildImmediately(this);      // no budget, one frame
+```
+
+Only ever do this where a frame spike is invisible. The per-frame budget exists to avoid exactly this the
+rest of the time.
+
+### Reading the counters from code
+
+```cpp
+const FCoverPointsStats& Stats = Cover->GetStats();
+
+// Something a test can assert on:
+check(Stats.TotalPoints  > 0);
+check(Stats.ClaimedPoints == ExpectedSquadSize);
+check(Stats.BuildMillisecondsPeak < 4.0f);
+```
+
+`FCoverPointsStats` is a `BlueprintReadOnly` struct, so the same assertions are available to a functional
+test written in Blueprint.
+
+### Subsystem reference
+
+| Group | Functions |
+|---|---|
+| Volumes | `RegisterVolume`, `UnregisterVolume`, `GetAllVolumes` |
+| Generation | `RequestBuild`, `FinishBuildImmediately`, `ClearAllPoints`, `IsBuilding`, `GetBuildProgress` |
+| Points | `GetPointCount`, `GetPoint`, `IsCoverValid`, `FindCoverNear` |
+| Queries | `FindBestCover` |
+| Claims | `ClaimCover`, `ReleaseCover`, `ReleaseCoverForActor`, `ReleaseAllClaims`, `GetCoverOwner`, `GetClaimedCoverForActor` |
+| Threat | `SetThreatLocation`, `SetThreatActor`, `ClearThreat`, `GetThreatLocation`, `HasThreat` |
+| Scoring helpers | `GetShielding`, `GetPeekSideTowards` *(both static)* |
+| Debug | `SetShowPoints`, `IsShowingPoints`, `SetShowPeekSides`, `IsShowingPeekSides` |
+| Stats | `GetStats`, `DrawStatsBox`, `GetStatsLineCount`, `LogStats` |
+
 ---
 
-## 12. Project settings
+## 15. Type reference
+
+### `FCoverPoint`
+
+| Field | Type | Meaning |
+|---|---|---|
+| `Location` | `FVector` | Where the agent stands. Already projected onto walkable floor when navmesh projection is on. |
+| `CoverNormal` | `FVector` | Surface normal of the shielding geometry, pointing **from the wall towards the point**. |
+| `Height` | `ECoverHeight` | `High` hides a standing agent, `Low` only a crouching one. |
+| `WallDistance` | `float` | Centimetres to the geometry that shields it. Closer is better cover. |
+| `bCanPeekLeft` / `bCanPeekRight` / `bCanPeekOver` | `bool` | Measured ways out of cover. |
+| `Score` | `float` | What the last query gave it. Informational; no query reads it. |
+| `bClaimed` | `bool` | Some agent owns it right now. |
+| `bInvalidated` | `bool` | The verifier caught it failing to block. Skipped by every query. |
+| `Handle` | `FCoverPointHandle` | Stable reference, safe to keep across frames. |
+| `ClaimedBy` | `TWeakObjectPtr<AActor>` | The holder, when there is one. Weak, so a dead agent does not keep its cover alive. |
+
+### `FCoverPointHandle`
+
+`Index` + `BuildId`, plus `IsSet()`, `==`, `!=` and `GetTypeHash` — so it can be a `TMap` key or a
+`TSet` member. An unset handle is `Index == INDEX_NONE`.
+
+### `FCoverQueryParams`
+
+Six weights (`ShieldingWeight`, `AgentDistanceWeight`, `ThreatDistanceWeight`, `HighCoverWeight`,
+`PeekWeight`, `WallProximityWeight`), `PreferredThreatDistance`, `MinShielding`, and three filters
+(`bRequireHighCover`, `bRequirePeek`, `bAllowClaimed`). Defaults come from
+`UCoverPointsSettings::DefaultQueryParams`, so a Blueprint that passes an untouched struct behaves the
+way the project decided.
+
+### `FCoverQueryResult`
+
+`bFound`, `Handle`, `Point`, `Score`, `DistanceToAgent`, `Shielding`, `PeekSide`, `bClaimed`,
+`CandidatesExamined`. When `bFound` is false, every other field is meaningless — branch on it first.
+
+### `FCoverPointsStats`
+
+Twenty-three measured counters: point totals and the high/low/peekable split, build state and progress,
+per-frame and peak build milliseconds, whole-build wall clock, queries per second, microseconds per
+query, last-query candidates, hash cell count, claims held and expired, verification traces and
+invalidations, the current threat, and the number of registered volumes. Nothing in it is a setting read
+back at you.
+
+### `ECoverHeight` / `ECoverPeekSide`
+
+`Low` / `High`, and `None` / `Left` / `Right` / `Over`. Both are `BlueprintType`; `PeekSideToString`
+turns the second into a label.
+
+---
+
+## 16. Project settings
 
 *Project Settings → Plugins → CoverPoints*. These are what a project decides once — what a *place* looks
-like is on the volume.
+like is on the volume. They are read on subsystem `Initialize`, so a change takes effect on the next PIE
+session rather than mid-play.
 
 ### General
 
@@ -444,7 +769,7 @@ like is on the volume.
 
 ---
 
-## 13. The statistics box
+## 17. The statistics box
 
 Canvas, drawn from `AHUD`, thirteen lines. Canvas rather than UMG for two reasons pulling the same way:
 it has to survive a cooked Shipping build, where `DrawDebug` is compiled out and a debug widget is
@@ -470,21 +795,30 @@ mouse attached.
 Two draw paths: set the map's HUD class to `ACoverPointsHUD`, or turn on `bAutoDrawStatsOnAnyHUD` and
 keep your own. They know about each other and cannot stack.
 
+`ACoverPointsHUD` exposes `bShowStats`, `StatsBoxOrigin`, `StatsBoxWidth` and `ToggleStats()`, so a
+widget button can flip the box without the project having to touch project settings.
+
 ---
 
-## 14. Console commands
+## 18. Console commands
 
 | Command | What it does |
 |---|---|
 | `Cover.Build [now]` | Generate for every enabled volume. `now` skips the per-frame budget and finishes on this frame. |
 | `Cover.Stats` | Print the measured counters to the log. |
 | `Cover.Show [0\|1] [peek]` | Draw the points, coloured against the current threat. `peek` adds the lean markers. |
-| `Cover.Threat [X Y Z \| player \| off]` | Set what the colours and the spot-checks measure against. No arguments prints the current one. |
+| `Cover.Threat [X Y Z \| player \| off]` | Set what the colours and the spot-checks measure against. `player` follows the player pawn; no arguments prints the current one. |
 | `Cover.Clear` | Throw away every point, every claim and any build in flight. |
+
+All five are world-scoped and log a warning instead of failing when the world has no CoverPoints
+subsystem. Debug drawing is compiled out of Shipping builds, as every `DrawDebug` call is; the counters
+box is not.
+
+Log category: `LogCoverPoints`.
 
 ---
 
-## 15. Performance
+## 19. Performance
 
 ### Generation
 
@@ -502,7 +836,8 @@ of nearly empty cells; too large and each cell hands the scorer points from the 
 
 **The claim on the box.** Double the point count by halving `GridSpacing` and the *candidate* count for
 a fixed search radius rises with the density of that radius, not with the size of the level — which is
-what "constant time" means here, and why the candidate count is printed next to the microseconds.
+what "constant time" means here, and why the candidate count is printed next to the microseconds. The
+demo arena measures single-digit microseconds per query against a field of ~150 points.
 
 A search radius so large that walking its cells would cost more than walking the points degrades to a
 linear scan, still bounded by `MaxCandidatesPerQuery`. It degrades; it does not stall.
@@ -513,9 +848,17 @@ One tick for the whole world. The claim sweep is O(claims), which is the small n
 times a second. Verification is a fixed trace budget. Debug drawing is O(points) per frame and is
 compiled out of Shipping entirely.
 
+### Memory
+
+One `FCoverPoint` is under 128 bytes. Ten thousand points is roughly a megabyte, plus the spatial hash,
+which holds one `int32` per point in `TArray`s keyed by occupied cell. The point array is deliberately
+not a `UPROPERTY`: it holds only weak pointers and plain numbers, so there is nothing in it for the
+garbage collector to keep alive, and reflecting it would put thousands of structs into every GC pass in
+exchange for nothing.
+
 ---
 
-## 16. Recipes
+## 20. Recipes
 
 ### Send a squad to eight different points
 
@@ -551,7 +894,7 @@ Only do this behind a loading screen. That is what the budget exists to avoid th
 
 ### Different weapons, one cover field
 
-```
+```cpp
 FCoverQueryParams Shotgun;  Shotgun.PreferredThreatDistance = 600;
 FCoverQueryParams Rifle;    Rifle.PreferredThreatDistance   = 2000;
 ```
@@ -560,22 +903,52 @@ Same points, same index, same microseconds. Two different layouts.
 
 ### Prefer flanking cover
 
-```
+```cpp
 Params.PeekWeight       = 3.0;
 Params.ShieldingWeight  = 1.5;
 Params.MinShielding     = 0.0;   // side-on to the threat is acceptable
 ```
 
+### Keep an agent's cover alive while it sits in it
+
+```cpp
+// On the agent's decision tick, while it is still in cover:
+UCoverPointsStatics::ClaimCover(this, MyCover, MyPawn);   // same point, same agent: refreshes the expiry
+```
+
+### A cover-density heat map for a designer tool
+
+```cpp
+TArray<FCoverPoint> Points;
+UCoverPointsStatics::FindCoverNear(this, RoomCentre, 3000.0f, /*MaxResults*/ 0, Points);
+// Or score without reserving anything:
+FCoverQueryParams Params;
+Params.bAllowClaimed = true;                              // asking a question, not sending anybody
+const FCoverQueryResult Best =
+    UCoverPointsStatics::FindBestCoverAtLocation(this, ProbeLocation, ThreatLocation, 2000.0f, Params);
+```
+
+### Show the numbers without changing your HUD class
+
+*Project Settings → Plugins → CoverPoints → Presentation → Auto Draw Stats On Any HUD* → on. The same box
+is drawn through `AHUD::OnHUDPostRender`, and the two paths cannot stack.
+
 ---
 
-## 17. Troubleshooting
+## 21. Troubleshooting
 
 **No points at all.**
 Check the box: is `Samples` non-zero? If it is zero the volume's box has no floor under it, or
 `bVolumeEnabled` is off, or `bEnabled` is off in project settings. If samples are being processed but no
 points appear, the geometry is further than `CoverDistance` from every sample, or `bProjectToNavMesh` is
 on and the level has a navmesh that does not cover the area — build navigation, or turn the projection
-off.
+off. **This is the single most common cause:** a level with no navmesh at all and `bProjectToNavMesh` on
+generates zero points, by design.
+
+**No points on the first frame, plenty a second later.**
+The navmesh is set to `Dynamic` and is still generating when the volume builds. Turn
+`bBuildOnBeginPlay` off and call `Rebuild` once navigation is ready — that is exactly what the demo map
+does.
 
 **Points only along one wall.**
 `CoverDistance` is short relative to `GridSpacing`. A sample only becomes a point if it can reach geometry
@@ -588,6 +961,10 @@ Raise it — the default 600 cm comfortably clears the default 140 cm standoff.
 **Two agents at the same point.**
 Only possible if `bClaimCover` was off in the query, or `bAllowClaimed` was on in the params. Both are
 opt-in for exactly this reason.
+
+**Agents crowd the side of the field nearest the threat.**
+`PreferredThreatDistance` is the term pulling them in — it scores a point as ideal at that distance, in
+*both* directions. Raise it, or raise `AgentDistanceWeight` so they prefer the cover in front of them.
 
 **Points invalidate that should not.**
 The verifier only strikes out a point when a clear line reaches the current threat. If the current threat
@@ -603,9 +980,12 @@ dense geometry. Turn `bTraceComplex` off.
 Something is rebuilding. Every rebuild moves indices and bumps the generation counter. Do not rebuild on a
 timer; rebuild when the level changes.
 
+**Nothing happens in the editor viewport.**
+By design. `DoesSupportWorldType` covers Game and PIE only.
+
 ---
 
-## 18. Scope and limits
+## 22. Scope and limits
 
 **One runtime module.** `LoadingPhase: PreDefault`. `Core`, `CoreUObject`, `Engine`, `DeveloperSettings`,
 `NavigationSystem`; `RenderCore` privately for the one-pixel texture the counters box is tiled from.
@@ -628,9 +1008,28 @@ while somebody is still moving the walls around is the sort of help nobody asked
 it back would need a second audit pass proving the geometry returned, and a point that flickers between
 usable and not is worse than one that is honestly gone.
 
+**Cover is horizontal.** Impact normals are flattened, and the grid is laid on the floor rather than
+through the air. Ledges, balconies and vertical cover above head height are not modelled.
+
+**Static geometry is the assumption.** Cover is measured once. Something that moves continuously — a
+patrolling vehicle, a swinging container — is not tracked; the verifier catches its *absence* from a
+point that used to be shielded, but it does not follow it to where it went.
+
 **Built and verified on Win64.** Mac and Linux are enabled in the plugin descriptor but were not built for
 this release.
 
 ---
 
-© 2026 Simulated Flow. All rights reserved.
+## 23. Support
+
+- **Documentation:** this file, plus `README.md` in the plugin root.
+- **Support:** the support address on the Fab product page and in `CoverPoints.uplugin` (`SupportURL`).
+- **Version:** 1.0.0, for Unreal Engine 5.8.
+
+When reporting a problem, the fastest thing you can send is a screenshot of the statistics box plus the
+output of `Cover.Stats` — between them they say what was generated, what it cost, what was claimed and
+what the verifier struck out.
+
+---
+
+© 2026 Silvan Teufel. All rights reserved.

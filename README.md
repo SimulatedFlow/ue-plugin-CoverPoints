@@ -67,6 +67,13 @@ HUD, turn on *Project Settings → Plugins → CoverPoints → Auto Draw Stats O
 
 To see the points, run `Cover.Show 1 peek` and `Cover.Threat player`.
 
+## Demo map
+
+`/CoverPoints/CoverPoints/Maps/L_CoverPointsDemo` — an arena of walls, pillars and crates, one Cover
+Volume, eight agents and a movable threat. Press Play and use the panel top-right: **1** builds the cover
+field, **2** sends eight agents to eight different points, **3** moves the threat and re-queries, **4**
+gives every claim back. The statistics box top-left is the plugin's own, not the demo's.
+
 ## Console commands
 
 | Command | What it does |
@@ -104,7 +111,7 @@ Full reference in [`Docs/DOCUMENTATION.md`](Docs/DOCUMENTATION.md).
 
 ---
 
-© 2026 Simulated Flow. All rights reserved.
+© 2026 Silvan Teufel. All rights reserved.
 
 <!-- SF-STORE-BLOCK:BEGIN -->
 ## 🛒 Source-available — see before you buy
@@ -122,5 +129,5 @@ _This plugin does not have its own Fab listing yet — the store link above is w
 
 👉 **[Get the free pack](https://silvan.teufel-engineering.com/newsletter/plugins/?q=gh)**
 
-_© 2026 Simulated Flow. All rights reserved._
+_© 2026 Silvan Teufel. All rights reserved._
 <!-- SF-STORE-BLOCK:END -->
