@@ -143,23 +143,32 @@ Then run `Cover.Show 1 peek` and `Cover.Threat player` in the console.
 The plugin ships one map that exercises every part of it:
 **`/CoverPoints/CoverPoints/Maps/L_CoverPointsDemo`**.
 
-Open it and press Play. A control panel sits top-right, the plugin's own statistics box top-left:
+Open it and press Play. It runs on its own from the first second: the red threat marker drives a lap
+around the arena at 15°/s — one circuit every 24 seconds — and the point colours follow it every frame.
+A control panel sits top-right, the plugin's own statistics box top-left:
 
 | Button | What it calls |
 |---|---|
 | **1  Build Cover Field** | `RebuildVolume` on the arena's Cover Volume, then `SetShowCoverPoints` / `SetShowPeekSides` |
 | **2  Deploy 8 Agents** | `FindBestCover` once per agent with *Claim Cover* on — eight agents, eight different points |
-| **3  Move Threat** | Moves the threat marker to the next of four positions and re-queries; the point colours flip |
-| **4  Release All Claims** | `ReleaseCoverForActor` per agent plus `ReleaseAllCover` |
+| **3  THREAT: MOVING / STOPPED** | Stops and restarts the lap; the button's own label carries the state |
+| **4  Release All Claims** | `ReleaseCoverForActor` per agent plus `ReleaseAllCover`; holds the re-query clock for 2 s so the empty state is visible |
 | **5  Toggle Point Overlay** | `SetShowCoverPoints` / `SetShowPeekSides` |
 
 Green points shield against the current threat, red ones face it; large dots are high cover, small dots
 low, the short line is the measured cover normal and a yellow ring marks a claimed point.
 
+Two costs are worth naming, because they are what keeps the lap free. The colours are re-derived inside
+the subsystem's own tick — one dot product per point, no Blueprint work at all — so moving the threat
+actor is the only thing the Director does per frame. The eight agents re-run `FindBestCover` on a
+**4 Hz** clock rather than every frame; that is 32 queries a second, which the counters box reports at a
+few microseconds each, and it is far more motion than the eye needs.
+
 The volume in that map has **`bBuildOnBeginPlay` off** on purpose: its `RecastNavMesh` is set to
-`Dynamic`, so the navmesh that `bProjectToNavMesh` needs is still generating on the first frame. Pressing
-*1* a second later is the whole reason the button exists. A map with a baked navmesh can leave
-`bBuildOnBeginPlay` on.
+`Dynamic`, so the navmesh that `bProjectToNavMesh` needs is still generating on the first frame. The
+Director therefore builds the field itself and **retries every 1.5 s until points exist**, which is what
+makes the map self-starting; button *1* rebuilds on demand and is no longer a prerequisite for anything
+happening on screen. A map with a baked navmesh can leave `bBuildOnBeginPlay` on and skip the retry.
 
 Assets, all under `/CoverPoints/CoverPoints/`:
 
@@ -1032,4 +1041,4 @@ what the verifier struck out.
 
 ---
 
-© 2026 Simulated Flow. All rights reserved.
+© 2026 Silvan Teufel. All rights reserved.
