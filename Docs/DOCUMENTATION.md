@@ -86,7 +86,7 @@ every one of them is usable as it stands.
 | | |
 |---|---|
 | **Engine version** | Unreal Engine **5.8** |
-| **Platforms enabled in the descriptor** | Win64, Mac, Linux |
+| **Platforms enabled in the descriptor** | Win64 |
 | **Built and verified for this release** | **Win64** (Development Editor and Shipping, via `RunUAT BuildPlugin`) |
 | **Module type** | one `Runtime` module, `LoadingPhase: PreDefault` |
 | **Editor module** | none |
@@ -1024,7 +1024,7 @@ through the air. Ledges, balconies and vertical cover above head height are not 
 patrolling vehicle, a swinging container — is not tracked; the verifier catches its *absence* from a
 point that used to be shielded, but it does not follow it to where it went.
 
-**Built and verified on Win64.** Mac and Linux are enabled in the plugin descriptor but were not built for
+**Built and verified on Win64.** Mac and Linux are not listed in the plugin descriptor and were not built for
 this release.
 
 ---

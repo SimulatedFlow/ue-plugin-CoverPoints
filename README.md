@@ -102,7 +102,7 @@ One runtime module, `LoadingPhase: PreDefault`. Depends on `Core`, `CoreUObject`
 
 No UMG in the product, no Niagara, no Chaos, no editor module, no network replication.
 
-Built and verified on **Win64**. Mac and Linux are enabled in the plugin descriptor but were not built for
+Built and verified on **Win64**. Mac and Linux are not listed in the plugin descriptor and were not built for
 this release.
 
 ## Documentation

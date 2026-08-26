@@ -142,7 +142,7 @@ and `FCoverPointsStats` structs.
 **Number of Blueprints:** 0 in the product. Demo content only.
 **Number of C++ classes:** 5 classes, 5 structs, 2 enums.
 **Network replicated:** No.
-**Supported platforms:** Win64 built and verified. Mac and Linux enabled in the descriptor, not built for
+**Supported platforms:** Win64 built and verified. Mac and Linux not listed in the descriptor, not built for
 this release.
 **Supported engine versions:** 5.8
 
