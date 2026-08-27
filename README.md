@@ -107,6 +107,8 @@ this release.
 
 ## Documentation
 
+Online, free and without an account: <https://wiki.teufel-engineering.com/en/CoverPoints/documentation>
+
 Full reference in [`Docs/DOCUMENTATION.md`](Docs/DOCUMENTATION.md).
 
 ---
