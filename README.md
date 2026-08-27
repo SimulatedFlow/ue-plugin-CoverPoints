@@ -107,7 +107,7 @@ this release.
 
 ## Documentation
 
-Online, free and without an account: <https://wiki.teufel-engineering.com/en/CoverPoints/documentation>
+Online, free and without an account: <https://github.com/SimulatedFlow/documentation>
 
 Full reference in [`Docs/DOCUMENTATION.md`](Docs/DOCUMENTATION.md).
 
